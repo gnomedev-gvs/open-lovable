@@ -9,7 +9,8 @@ CONFIG_DIR="${HOME}/.config/open-lovable"
 ENV_FILE="${CONFIG_DIR}/env"
 UNIT_DIR="${HOME}/.config/systemd/user"
 UNIT_FILE="${UNIT_DIR}/open-lovable.service"
-LOCAL_SANDBOX_IMAGE="node:22.23.2-bookworm@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a"
+APP_SHA="$(git rev-parse --short=12 HEAD)"
+LOCAL_SANDBOX_IMAGE="open-lovable-sandbox:${APP_SHA}"
 
 [[ "$(pwd -P)" == "${APP_ROOT}" ]] || {
   echo "refusing deploy outside ${APP_ROOT}" >&2
@@ -19,11 +20,20 @@ LOCAL_SANDBOX_IMAGE="node:22.23.2-bookworm@sha256:0557ac14e0d45d02ed563067b82856
   echo "production Next.js build is missing" >&2
   exit 3
 }
+[[ -f "sandbox/Dockerfile" ]] || {
+  echo "local sandbox Dockerfile is missing" >&2
+  exit 6
+}
 [[ -x /usr/bin/docker ]] || {
   echo "docker is required for the Open Lovable local sandbox provider" >&2
   exit 6
 }
 /usr/bin/docker version --format '{{.Server.Version}}' >/dev/null
+
+# Build the generated-app runtime before touching the live service. The Dockerfile
+# pins its upstream Node image by digest, and the resulting local image is tagged
+# with the exact Open Lovable commit being deployed.
+/usr/bin/docker build --pull=false --tag "${LOCAL_SANDBOX_IMAGE}" --file sandbox/Dockerfile sandbox
 
 mkdir -p "${CONFIG_DIR}" "${UNIT_DIR}"
 if [[ ! -e "${ENV_FILE}" ]]; then
@@ -51,6 +61,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=${APP_ROOT}
+EnvironmentFile=-${ENV_FILE}
 Environment=NODE_ENV=production
 Environment=NEXT_TELEMETRY_DISABLED=1
 Environment=NEXT_PUBLIC_APP_URL=http://${LAN_IP}:${PORT}
@@ -60,7 +71,6 @@ Environment=LOCAL_SANDBOX_HOST=${LAN_IP}
 Environment=LOCAL_SANDBOX_MEMORY=1536m
 Environment=LOCAL_SANDBOX_CPUS=2
 Environment=LOCAL_SANDBOX_PIDS=512
-EnvironmentFile=-${ENV_FILE}
 ExecStart=/usr/bin/bash -lc 'exec npm run start -- --hostname 0.0.0.0 --port ${PORT}'
 Restart=on-failure
 RestartSec=3
@@ -83,6 +93,7 @@ for _ in $(seq 1 30); do
     cat /tmp/open-lovable-health.json
     echo
     echo "LAN_URL=http://${LAN_IP}:${PORT}"
+    echo "SANDBOX_IMAGE=${LOCAL_SANDBOX_IMAGE}"
     rm -f /tmp/open-lovable-health.json
     exit 0
   fi
