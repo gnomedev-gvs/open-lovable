@@ -1822,22 +1822,27 @@ Provide the complete file content without any truncation. Include all necessary 
                   completionModelName = model;
                 }
                 
-                const completionResult = await streamText({
-                  model: completionClient(completionModelName),
-                  messages: [
-                    { 
-                      role: 'system', 
-                      content: 'You are completing a truncated file. Provide the complete, working file content.'
-                    },
-                    { role: 'user', content: completionPrompt }
-                  ],
-                  temperature: model.startsWith('openai/gpt-5') ? undefined : appConfig.ai.defaultTemperature
-                });
-                
-                // Get the full text from the stream
                 let completedContent = '';
-                for await (const chunk of completionResult.textStream) {
-                  completedContent += chunk;
+                if (useCodexBackend) {
+                  completedContent = await runCodexGeneration(
+                    'You are completing a truncated Open Lovable generated file. Return only the complete working file content with no markdown fence.',
+                    completionPrompt
+                  );
+                } else {
+                  const completionResult = await streamText({
+                    model: completionClient(completionModelName),
+                    messages: [
+                      {
+                        role: 'system',
+                        content: 'You are completing a truncated file. Provide the complete, working file content.'
+                      },
+                      { role: 'user', content: completionPrompt }
+                    ],
+                    temperature: model.startsWith('openai/gpt-5') ? undefined : appConfig.ai.defaultTemperature
+                  });
+                  for await (const chunk of completionResult.textStream) {
+                    completedContent += chunk;
+                  }
                 }
                 
                 // Replace the truncated file in the generatedCode
