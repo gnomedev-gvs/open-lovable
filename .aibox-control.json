@@ -1,5 +1,5 @@
 {
-  "setup": "npm ci --prefer-offline --no-audit",
+  "setup": "npm install --package-lock=false --prefer-offline --no-audit",
   "test": "npx tsc --noEmit",
   "build": "npm run build",
   "deploy_mode": "live_checkout",
