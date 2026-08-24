@@ -17,8 +17,8 @@ npm install
 2. **Configure environment**
 
 ```env
-# Required for full cloning/search readiness
-FIRECRAWL_API_KEY=your_firecrawl_api_key
+# Firecrawl's official keyless API mode, with no account or API key required.
+FIRECRAWL_MODE=keyless
 
 # Need at least one AI provider
 AI_GATEWAY_API_KEY=your_ai_gateway_api_key
@@ -28,6 +28,8 @@ AI_GATEWAY_API_KEY=your_ai_gateway_api_key
 SANDBOX_PROVIDER=local-docker
 LOCAL_SANDBOX_IMAGE=open-lovable-sandbox:dev
 ```
+
+A Firecrawl API key remains optional if higher limits are later required. Open Lovable does not return mock scrape data when Firecrawl is unavailable.
 
 For standalone local development, build the sandbox image first:
 
@@ -53,6 +55,7 @@ The managed deployment builds `sandbox/Dockerfile` before restarting Open Lovabl
 
 - Open Lovable service: `open-lovable.service`
 - application port: `4320`
+- Firecrawl mode: official keyless API, 1,000 free credits/month under Firecrawl's current service terms
 - sandbox provider: `local-docker`
 - generated-app base runtime: pinned Node 22.23.2 Bookworm image
 - generated-app Vite port: `5173`, mapped to an ephemeral host port on the AI BOX LAN address

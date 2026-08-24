@@ -71,6 +71,7 @@ Environment=LOCAL_SANDBOX_HOST=${LAN_IP}
 Environment=LOCAL_SANDBOX_MEMORY=1536m
 Environment=LOCAL_SANDBOX_CPUS=2
 Environment=LOCAL_SANDBOX_PIDS=512
+Environment=FIRECRAWL_MODE=keyless
 ExecStart=/usr/bin/bash -lc 'exec npm run start -- --hostname 0.0.0.0 --port ${PORT}'
 Restart=on-failure
 RestartSec=3
