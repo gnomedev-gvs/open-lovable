@@ -3,6 +3,8 @@ set -euo pipefail
 
 APP_ROOT="/home/aibox/Dev/open-lovable"
 PORT="4320"
+LAN_IP="$(hostname -I 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i ~ /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)/) {print $i; exit}}')"
+[[ -n "${LAN_IP}" ]] || LAN_IP="127.0.0.1"
 CONFIG_DIR="${HOME}/.config/open-lovable"
 ENV_FILE="${CONFIG_DIR}/env"
 UNIT_DIR="${HOME}/.config/systemd/user"
@@ -45,10 +47,10 @@ Type=simple
 WorkingDirectory=${APP_ROOT}
 Environment=NODE_ENV=production
 Environment=NEXT_TELEMETRY_DISABLED=1
-Environment=NEXT_PUBLIC_APP_URL=http://127.0.0.1:${PORT}
+Environment=NEXT_PUBLIC_APP_URL=http://${LAN_IP}:${PORT}
 Environment=SANDBOX_PROVIDER=vercel
 EnvironmentFile=-${ENV_FILE}
-ExecStart=/usr/bin/bash -lc 'exec npm run start -- --hostname 127.0.0.1 --port ${PORT}'
+ExecStart=/usr/bin/bash -lc 'exec npm run start -- --hostname 0.0.0.0 --port ${PORT}'
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=20
@@ -68,6 +70,8 @@ systemctl --user restart open-lovable.service
 for _ in $(seq 1 30); do
   if curl -fsS --max-time 2 "http://127.0.0.1:${PORT}/api/health" >/tmp/open-lovable-health.json 2>/dev/null; then
     cat /tmp/open-lovable-health.json
+    echo
+    echo "LAN_URL=http://${LAN_IP}:${PORT}"
     rm -f /tmp/open-lovable-health.json
     exit 0
   fi
