@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { firecrawlMode, isFirecrawlReady } from '@/lib/firecrawl';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,13 +35,14 @@ export async function GET() {
         ? vercelSandboxReady
         : localDockerReady;
 
-  const firecrawlReady = configured('FIRECRAWL_API_KEY');
+  const firecrawlReady = isFirecrawlReady();
 
   return NextResponse.json({
     ok: true,
     service: 'open-lovable',
     aiProviderReady,
     firecrawlReady,
+    firecrawlMode: firecrawlMode(),
     sandboxProvider,
     sandboxReady,
     generationReady: aiProviderReady && firecrawlReady && sandboxReady,
