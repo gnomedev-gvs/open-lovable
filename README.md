@@ -24,12 +24,18 @@ FIRECRAWL_API_KEY=your_firecrawl_api_key
 AI_GATEWAY_API_KEY=your_ai_gateway_api_key
 # Or use OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY
 
-# AI BOX default sandbox provider
+# Local Docker sandbox
 SANDBOX_PROVIDER=local-docker
-LOCAL_SANDBOX_IMAGE=node:22.23.2-bookworm@sha256:0557ac14e0d45d02ed563067b82856ca5e7aa3437fa28d98d4350ea9c3d9494a
+LOCAL_SANDBOX_IMAGE=open-lovable-sandbox:dev
 ```
 
-The AI BOX deployment uses an isolated local Docker container for generated applications. It does not require Vercel Sandbox or E2B credentials. Vercel Sandbox and E2B remain optional provider adapters for other environments.
+For standalone local development, build the sandbox image first:
+
+```bash
+docker build -t open-lovable-sandbox:dev -f sandbox/Dockerfile sandbox
+```
+
+The sandbox Dockerfile pins its Node 22.23.2 Bookworm parent image by digest. Vercel Sandbox and E2B remain optional provider adapters for other environments.
 
 3. **Run for development**
 
@@ -43,12 +49,12 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Production AI BOX deployment is controlled through `gnomedev-gvs/aibox-control`. Do not deploy by manually editing the AI BOX checkout or service.
 
-The managed runtime uses:
+The managed deployment builds `sandbox/Dockerfile` before restarting Open Lovable and tags the resulting local image with the exact Open Lovable commit being deployed. The runtime uses:
 
 - Open Lovable service: `open-lovable.service`
 - application port: `4320`
 - sandbox provider: `local-docker`
-- generated-app runtime: pinned Node 22.23.2 Bookworm container
+- generated-app base runtime: pinned Node 22.23.2 Bookworm image
 - generated-app Vite port: `5173`, mapped to an ephemeral host port on the AI BOX LAN address
 - container capabilities: all dropped
 - `no-new-privileges`: enabled
