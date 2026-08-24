@@ -44,6 +44,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=${APP_ROOT}
 Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
 Environment=NEXT_PUBLIC_APP_URL=http://127.0.0.1:${PORT}
 Environment=SANDBOX_PROVIDER=vercel
 EnvironmentFile=-${ENV_FILE}
