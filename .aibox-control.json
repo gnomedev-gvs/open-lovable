@@ -1,0 +1,8 @@
+{
+  "setup": "npm install --package-lock=false --registry=https://registry.npmjs.org --no-audit --no-fund",
+  "test": "npx tsc --noEmit",
+  "build": "npm run build",
+  "deploy_mode": "live_checkout",
+  "live_branch": "main",
+  "deploy": "npm run build && bash scripts/aibox-deploy.sh"
+}
