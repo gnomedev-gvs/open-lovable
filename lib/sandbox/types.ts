@@ -7,7 +7,7 @@ export interface SandboxFile {
 export interface SandboxInfo {
   sandboxId: string;
   url: string;
-  provider: 'e2b' | 'vercel';
+  provider: 'e2b' | 'vercel' | 'local-docker';
   createdAt: Date;
 }
 
@@ -29,6 +29,13 @@ export interface SandboxProviderConfig {
     projectId?: string;
     token?: string;
     authMethod?: 'oidc' | 'pat';
+  };
+  localDocker?: {
+    image?: string;
+    host?: string;
+    memory?: string;
+    cpus?: string;
+    pidsLimit?: number;
   };
 }
 
@@ -52,14 +59,11 @@ export abstract class SandboxProvider {
   abstract terminate(): Promise<void>;
   abstract isAlive(): boolean;
   
-  // Optional methods that providers can override
   async setupViteApp(): Promise<void> {
-    // Default implementation for setting up a Vite React app
     throw new Error('setupViteApp not implemented for this provider');
   }
   
   async restartViteServer(): Promise<void> {
-    // Default implementation for restarting Vite
     throw new Error('restartViteServer not implemented for this provider');
   }
 }

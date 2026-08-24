@@ -7,7 +7,7 @@ function configured(name: string): boolean {
 }
 
 export async function GET() {
-  const sandboxProvider = (process.env.SANDBOX_PROVIDER || 'vercel').toLowerCase();
+  const sandboxProvider = (process.env.SANDBOX_PROVIDER || 'local-docker').toLowerCase();
   const aiProviderReady =
     configured('AI_GATEWAY_API_KEY') ||
     configured('OPENAI_API_KEY') ||
@@ -23,10 +23,16 @@ export async function GET() {
       configured('VERCEL_TOKEN')
     );
 
+  const localDockerReady =
+    (sandboxProvider === 'local-docker' || sandboxProvider === 'docker' || sandboxProvider === 'local') &&
+    configured('LOCAL_SANDBOX_IMAGE');
+
   const sandboxReady =
     sandboxProvider === 'e2b'
       ? configured('E2B_API_KEY')
-      : sandboxProvider === 'vercel' && vercelSandboxReady;
+      : sandboxProvider === 'vercel'
+        ? vercelSandboxReady
+        : localDockerReady;
 
   const firecrawlReady = configured('FIRECRAWL_API_KEY');
 
