@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { execFile as execFileCallback } from 'child_process';
+import { mkdtemp, rm } from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import { promisify } from 'util';
 import { createGroq } from '@ai-sdk/groq';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -17,6 +22,62 @@ export const dynamic = 'force-dynamic';
 // Check if we're using Vercel AI Gateway
 const isUsingAIGateway = !!process.env.AI_GATEWAY_API_KEY;
 const aiGatewayBaseURL = 'https://ai-gateway.vercel.sh/v1';
+const CODEX_BIN = process.env.CODEX_BIN?.trim() || '/home/aibox/.npm-global/bin/codex';
+const useCodexBackend = (process.env.AI_PROVIDER || '').trim().toLowerCase() === 'codex';
+const execFileAsync = promisify(execFileCallback);
+
+function extractCodexAgentText(stdout: string): string {
+  let lastAgentMessage = '';
+  for (const line of stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      if (event?.item?.type === 'agent_message' && typeof event.item.text === 'string' && event.item.text.trim()) {
+        lastAgentMessage = event.item.text.trim();
+      }
+    } catch {
+      // Codex --json emits JSONL. Ignore non-JSON diagnostic lines.
+    }
+  }
+  if (!lastAgentMessage) {
+    throw new Error('Codex completed without an agent message');
+  }
+  return lastAgentMessage;
+}
+
+async function runCodexGeneration(systemPrompt: string, userPrompt: string): Promise<string> {
+  const cwd = await mkdtemp(path.join(os.tmpdir(), 'open-lovable-codex-'));
+  try {
+    const prompt = `${systemPrompt}\n\n${userPrompt}`;
+    const { stdout } = await execFileAsync(
+      CODEX_BIN,
+      ['exec', '--json', '--sandbox', 'read-only', '--skip-git-repo-check', prompt],
+      {
+        cwd,
+        timeout: 300000,
+        maxBuffer: 16 * 1024 * 1024,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PATH: `/home/aibox/.npm-global/bin:${process.env.PATH || ''}`,
+        },
+      }
+    );
+    return extractCodexAgentText(String(stdout || ''));
+  } finally {
+    await rm(cwd, { recursive: true, force: true });
+  }
+}
+
+function textAsAsyncChunks(text: string, size = 512): AsyncIterable<string> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (let offset = 0; offset < text.length; offset += size) {
+        yield text.slice(offset, offset + size);
+      }
+    },
+  };
+}
 
 console.log('[generate-ai-code-stream] AI Gateway config:', {
   isUsingAIGateway,
@@ -1238,7 +1299,7 @@ MORPH FAST APPLY MODE (EDIT-ONLY):
           actualModel = model;
         }
 
-        console.log(`[generate-ai-code-stream] Using provider: ${isAnthropic ? 'Anthropic' : isGoogle ? 'Google' : isOpenAI ? 'OpenAI' : 'Groq'}, model: ${actualModel}`);
+        console.log(`[generate-ai-code-stream] Using provider: ${useCodexBackend ? 'Codex' : isAnthropic ? 'Anthropic' : isGoogle ? 'Google' : isOpenAI ? 'OpenAI' : 'Groq'}, model: ${useCodexBackend ? 'controller-managed' : actualModel}`);
         console.log(`[generate-ai-code-stream] AI Gateway enabled: ${isUsingAIGateway}`);
         console.log(`[generate-ai-code-stream] Model string: ${model}`);
 
@@ -1329,7 +1390,17 @@ It's better to have 3 complete files than 10 incomplete files.`
         let retryCount = 0;
         const maxRetries = 2;
         
-        while (retryCount <= maxRetries) {
+        if (useCodexBackend) {
+          await sendProgress({ type: 'status', message: 'Generating with AI BOX Codex...' });
+          const codexPrompt = streamOptions.messages
+            .map((message: any) => `${String(message.role).toUpperCase()}:\n${message.content}`)
+            .join('\n\n');
+          const codexText = await runCodexGeneration(
+            'You are the governed Open Lovable code-generation backend. Follow the supplied SYSTEM and USER instructions exactly and output the requested Open Lovable XML file format.',
+            codexPrompt
+          );
+          result = { textStream: textAsAsyncChunks(codexText) };
+        } else while (retryCount <= maxRetries) {
           try {
             result = await streamText(streamOptions);
             break; // Success, exit retry loop
@@ -1751,22 +1822,27 @@ Provide the complete file content without any truncation. Include all necessary 
                   completionModelName = model;
                 }
                 
-                const completionResult = await streamText({
-                  model: completionClient(completionModelName),
-                  messages: [
-                    { 
-                      role: 'system', 
-                      content: 'You are completing a truncated file. Provide the complete, working file content.'
-                    },
-                    { role: 'user', content: completionPrompt }
-                  ],
-                  temperature: model.startsWith('openai/gpt-5') ? undefined : appConfig.ai.defaultTemperature
-                });
-                
-                // Get the full text from the stream
                 let completedContent = '';
-                for await (const chunk of completionResult.textStream) {
-                  completedContent += chunk;
+                if (useCodexBackend) {
+                  completedContent = await runCodexGeneration(
+                    'You are completing a truncated Open Lovable generated file. Return only the complete working file content with no markdown fence.',
+                    completionPrompt
+                  );
+                } else {
+                  const completionResult = await streamText({
+                    model: completionClient(completionModelName),
+                    messages: [
+                      {
+                        role: 'system',
+                        content: 'You are completing a truncated file. Provide the complete, working file content.'
+                      },
+                      { role: 'user', content: completionPrompt }
+                    ],
+                    temperature: model.startsWith('openai/gpt-5') ? undefined : appConfig.ai.defaultTemperature
+                  });
+                  for await (const chunk of completionResult.textStream) {
+                    completedContent += chunk;
+                  }
                 }
                 
                 // Replace the truncated file in the generatedCode

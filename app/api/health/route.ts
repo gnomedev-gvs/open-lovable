@@ -1,3 +1,4 @@
+import { existsSync } from 'fs';
 import { NextResponse } from 'next/server';
 import { firecrawlMode, isFirecrawlReady } from '@/lib/firecrawl';
 
@@ -9,12 +10,16 @@ function configured(name: string): boolean {
 
 export async function GET() {
   const sandboxProvider = (process.env.SANDBOX_PROVIDER || 'local-docker').toLowerCase();
-  const aiProviderReady =
+  const aiProvider = (process.env.AI_PROVIDER || '').trim().toLowerCase();
+  const codexBin = process.env.CODEX_BIN?.trim() || '/home/aibox/.npm-global/bin/codex';
+  const codexReady = aiProvider === 'codex' && existsSync(codexBin);
+  const apiKeyProviderReady =
     configured('AI_GATEWAY_API_KEY') ||
     configured('OPENAI_API_KEY') ||
     configured('ANTHROPIC_API_KEY') ||
     configured('GEMINI_API_KEY') ||
     configured('GROQ_API_KEY');
+  const aiProviderReady = codexReady || apiKeyProviderReady;
 
   const vercelSandboxReady =
     configured('VERCEL_OIDC_TOKEN') ||
@@ -40,6 +45,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     service: 'open-lovable',
+    aiProvider: codexReady ? 'codex' : apiKeyProviderReady ? 'api-key' : 'none',
     aiProviderReady,
     firecrawlReady,
     firecrawlMode: firecrawlMode(),

@@ -28,6 +28,10 @@ LOCAL_SANDBOX_IMAGE="open-lovable-sandbox:${APP_SHA}"
   echo "docker is required for the Open Lovable local sandbox provider" >&2
   exit 6
 }
+[[ -x /home/aibox/.npm-global/bin/codex ]] || {
+  echo "controller-managed Codex CLI is required for the Open Lovable AI provider" >&2
+  exit 7
+}
 /usr/bin/docker version --format '{{.Server.Version}}' >/dev/null
 
 # Build the generated-app runtime before touching the live service. The Dockerfile
@@ -65,13 +69,15 @@ EnvironmentFile=-${ENV_FILE}
 Environment=NODE_ENV=production
 Environment=NEXT_TELEMETRY_DISABLED=1
 Environment=NEXT_PUBLIC_APP_URL=http://${LAN_IP}:${PORT}
+Environment=AI_PROVIDER=codex
+Environment=CODEX_BIN=/home/aibox/.npm-global/bin/codex
 Environment=SANDBOX_PROVIDER=local-docker
 Environment=LOCAL_SANDBOX_IMAGE=${LOCAL_SANDBOX_IMAGE}
 Environment=LOCAL_SANDBOX_HOST=${LAN_IP}
 Environment=LOCAL_SANDBOX_MEMORY=1536m
 Environment=LOCAL_SANDBOX_CPUS=2
 Environment=LOCAL_SANDBOX_PIDS=512
-Environment=FIRECRAWL_MODE=keyless
+Environment=FIRECRAWL_MODE=local
 ExecStart=/usr/bin/bash -lc 'exec npm run start -- --hostname 0.0.0.0 --port ${PORT}'
 Restart=on-failure
 RestartSec=3
