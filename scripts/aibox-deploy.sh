@@ -47,7 +47,7 @@ Environment=NODE_ENV=production
 Environment=NEXT_PUBLIC_APP_URL=http://127.0.0.1:${PORT}
 Environment=SANDBOX_PROVIDER=vercel
 EnvironmentFile=-${ENV_FILE}
-ExecStart=/usr/bin/bash -lc 'exec npm run start -- --hostname 0.0.0.0 --port ${PORT}'
+ExecStart=/usr/bin/bash -lc 'exec npm run start -- --hostname 127.0.0.1 --port ${PORT}'
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=20
