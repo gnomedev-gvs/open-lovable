@@ -5,6 +5,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+
 const execFileAsync = promisify(execFile);
 const DOCKER_BIN = process.env.LOCAL_SANDBOX_DOCKER_BIN || '/usr/bin/docker';
 const WORKDIR = '/home/node/app';
