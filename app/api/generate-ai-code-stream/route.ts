@@ -26,21 +26,52 @@ const CODEX_BIN = process.env.CODEX_BIN?.trim() || '/home/aibox/.npm-global/bin/
 const useCodexBackend = (process.env.AI_PROVIDER || '').trim().toLowerCase() === 'codex';
 const execFileAsync = promisify(execFileCallback);
 
+function codexText(value: any): string {
+  if (typeof value === 'string') return value.trim();
+  if (!Array.isArray(value)) return '';
+  return value
+    .map((part: any) => typeof part === 'string' ? part : typeof part?.text === 'string' ? part.text : '')
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
 function extractCodexAgentText(stdout: string): string {
   let lastAgentMessage = '';
+  const eventTypes = new Set<string>();
+  const failures: string[] = [];
   for (const line of stdout.split(/\r?\n/)) {
     if (!line.trim()) continue;
     try {
       const event = JSON.parse(line);
-      if (event?.item?.type === 'agent_message' && typeof event.item.text === 'string' && event.item.text.trim()) {
-        lastAgentMessage = event.item.text.trim();
+      const eventType = String(event?.type || '').toLowerCase();
+      if (eventType) eventTypes.add(eventType);
+      const itemType = String(event?.item?.type || '').toLowerCase();
+      if (itemType) eventTypes.add(`item:${itemType}`);
+      if (itemType === 'agent_message' || itemType === 'assistant' || itemType === 'message') {
+        const text = codexText(event.item.text ?? event.item.content ?? event.item.message);
+        if (text) lastAgentMessage = text;
+      } else if (['agent_message', 'assistant', 'message', 'output'].includes(eventType)) {
+        const text = codexText(event.text ?? event.content ?? event.message);
+        if (text) lastAgentMessage = text;
+      }
+      if (itemType === 'error') {
+        const message = codexText(event.item.message ?? event.item.text);
+        if (message) failures.push(message.slice(0, 500));
+      }
+      if (eventType === 'error' || eventType === 'turn.failed') {
+        const message = codexText(event?.error?.message ?? event?.message ?? event?.error);
+        if (message) failures.push(message.slice(0, 500));
       }
     } catch {
       // Codex --json emits JSONL. Ignore non-JSON diagnostic lines.
     }
   }
   if (!lastAgentMessage) {
-    throw new Error('Codex completed without an agent message');
+    const suffix = failures.length
+      ? `; failures=${failures.join(' | ')}`
+      : `; events=${Array.from(eventTypes).join(',') || 'none'}`;
+    throw new Error(`Codex completed without an agent message${suffix}`);
   }
   return lastAgentMessage;
 }
