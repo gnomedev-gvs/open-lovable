@@ -59,19 +59,22 @@ async function snapshotContainer(sandboxId: string): Promise<{ sandboxId: string
   await assertManagedSandbox(sandboxId);
   await mkdir(SESSION_ROOT, { recursive: true, mode: 0o700 });
 
+  // Browser-triggered and periodic snapshots can overlap. Each request must use
+  // its own in-container archive so one snapshot cannot delete another's file.
+  const containerArchive = `/tmp/open-lovable-session-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tgz`;
   await docker([
     'exec', sandboxId, 'sh', '-lc',
-    `cd ${WORKDIR} && tar --exclude='./node_modules' --exclude='./.git' --exclude='./dist' --exclude='./build' --exclude='./.next' -czf /tmp/open-lovable-session.tgz .`,
+    `cd ${WORKDIR} && tar --exclude='./node_modules' --exclude='./.git' --exclude='./dist' --exclude='./build' --exclude='./.next' -czf ${containerArchive} .`,
   ]);
 
   const destination = archivePath(sandboxId);
   const temporary = `${destination}.tmp-${process.pid}-${Date.now()}`;
   try {
-    await docker(['cp', `${sandboxId}:/tmp/open-lovable-session.tgz`, temporary]);
+    await docker(['cp', `${sandboxId}:${containerArchive}`, temporary]);
     await rename(temporary, destination);
   } finally {
     await rm(temporary, { force: true }).catch(() => undefined);
-    await docker(['exec', sandboxId, 'rm', '-f', '/tmp/open-lovable-session.tgz'], 30000).catch(() => undefined);
+    await docker(['exec', sandboxId, 'rm', '-f', containerArchive], 30000).catch(() => undefined);
   }
 
   const info = await stat(destination);
