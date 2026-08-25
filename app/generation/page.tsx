@@ -159,6 +159,46 @@ function AISandboxPage() {
 
   // Store flag to trigger generation after component mounts
   const [shouldAutoGenerate, setShouldAutoGenerate] = useState(false);
+  const [chatPersistenceHydrated, setChatPersistenceHydrated] = useState(false);
+
+  // Keep the visible chat attached to the sandbox so a browser refresh does not
+  // make an existing workspace look like a brand-new session.
+  useEffect(() => {
+    const sandboxId = searchParams.get('sandbox');
+    if (!sandboxId) {
+      setChatPersistenceHydrated(true);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(`open-lovable:chat:${sandboxId}`);
+      if (raw) {
+        const restored = JSON.parse(raw);
+        if (Array.isArray(restored) && restored.length > 0) {
+          setChatMessages(restored.map((message: ChatMessage) => ({
+            ...message,
+            timestamp: new Date(message.timestamp)
+          })));
+        }
+      }
+    } catch (error) {
+      console.warn('[persistence] Could not restore chat history:', error);
+    } finally {
+      setChatPersistenceHydrated(true);
+    }
+    // The sandbox URL is authoritative for this browser load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!chatPersistenceHydrated) return;
+    const sandboxId = searchParams.get('sandbox');
+    if (!sandboxId) return;
+    try {
+      localStorage.setItem(`open-lovable:chat:${sandboxId}`, JSON.stringify(chatMessages));
+    } catch (error) {
+      console.warn('[persistence] Could not save chat history:', error);
+    }
+  }, [chatMessages, chatPersistenceHydrated, searchParams]);
 
   // Clear old conversation data on component mount and create/restore sandbox
   useEffect(() => {
@@ -173,6 +213,8 @@ function AISandboxPage() {
       const urlParam = searchParams.get('url');
       const templateParam = searchParams.get('template');
       const detailsParam = searchParams.get('details');
+      const sandboxIdParam = searchParams.get('sandbox');
+      const isRestoringSandbox = Boolean(sandboxIdParam);
       
       // Then check session storage as fallback
       const storedUrl = urlParam || sessionStorage.getItem('targetUrl');
@@ -238,41 +280,69 @@ function AISandboxPage() {
         setShowHomeScreen(false);
         setHomeScreenFading(false);
         
-        // Set flag to auto-trigger generation after component updates
-        setShouldAutoGenerate(true);
-        
-        // Also set autoStart flag for the effect
-        sessionStorage.setItem('autoStart', 'true');
-      }
-      
-      // Clear old conversation
-      try {
-        await fetch('/api/conversation-state', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'clear-old' })
-        });
-        console.log('[home] Cleared old conversation data on mount');
-      } catch (error) {
-        console.error('[ai-sandbox] Failed to clear old conversation:', error);
-        if (isMounted) {
-          addChatMessage('Failed to clear old conversation data.', 'error');
+        // A sandbox URL is a resume request, not a request to regenerate the site.
+        if (!isRestoringSandbox) {
+          setShouldAutoGenerate(true);
+          sessionStorage.setItem('autoStart', 'true');
+        } else {
+          sessionStorage.removeItem('autoStart');
         }
       }
       
+      // Never discard active conversation state when reopening an existing workspace.
+      if (!isRestoringSandbox) {
+        try {
+          await fetch('/api/conversation-state', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'clear-old' })
+          });
+          console.log('[home] Cleared old conversation data on mount');
+        } catch (error) {
+          console.error('[ai-sandbox] Failed to clear old conversation:', error);
+          if (isMounted) {
+            addChatMessage('Failed to clear old conversation data.', 'error');
+          }
+        }
+      } else {
+        console.log('[home] Preserving conversation state for sandbox:', sandboxIdParam);
+      }
+      
       if (!isMounted) return;
-
-      // Check if sandbox ID is in URL
-      const sandboxIdParam = searchParams.get('sandbox');
       
       setLoading(true);
       try {
         if (sandboxIdParam) {
           console.log('[home] Attempting to restore sandbox:', sandboxIdParam);
-          // For now, just create a new sandbox - you could enhance this to actually restore
-          // the specific sandbox if your backend supports it
-          sandboxCreated = true;
-          await createSandbox(true);
+          const statusResponse = await fetch('/api/sandbox-status', { cache: 'no-store' });
+          const statusData = await statusResponse.json();
+          if (
+            statusData?.active &&
+            statusData?.healthy &&
+            statusData?.sandboxData?.sandboxId === sandboxIdParam
+          ) {
+            sandboxCreated = true;
+            setSandboxData(statusData.sandboxData);
+            updateStatus('Sandbox active', true);
+            console.log('[home] Resumed existing sandbox without replacement:', sandboxIdParam);
+
+            // Rehydrate the file tree immediately from the preserved sandbox.
+            try {
+              const filesResponse = await fetch('/api/get-sandbox-files', { cache: 'no-store' });
+              const filesData = await filesResponse.json();
+              if (filesData?.success) {
+                setSandboxFiles(filesData.files || {});
+                setFileStructure(filesData.structure || '');
+              }
+            } catch (error) {
+              console.warn('[home] Could not restore sandbox file inventory:', error);
+            }
+          } else {
+            // The persistence guard snapshots any surviving labelled container before
+            // create-ai-sandbox-v2 performs stale-container cleanup, then restores it.
+            sandboxCreated = true;
+            await createSandbox(true);
+          }
         } else {
           console.log('[home] No sandbox in URL, creating new sandbox automatically...');
           sandboxCreated = true;
@@ -280,7 +350,7 @@ function AISandboxPage() {
         }
         
         // If we have a URL from the home page, mark for automatic start
-        if (storedUrl && isMounted) {
+        if (storedUrl && isMounted && !isRestoringSandbox) {
           // We'll trigger the generation after the component is fully mounted
           // and the startGeneration function is defined
           sessionStorage.setItem('autoStart', 'true');
