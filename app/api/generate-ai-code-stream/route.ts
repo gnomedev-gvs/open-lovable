@@ -3,7 +3,7 @@ import { execFile as execFileCallback } from 'child_process';
 import { mkdtemp, readFile, rm } from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { promisify } from 'util';
+
 import { createGroq } from '@ai-sdk/groq';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -24,7 +24,29 @@ const isUsingAIGateway = !!process.env.AI_GATEWAY_API_KEY;
 const aiGatewayBaseURL = 'https://ai-gateway.vercel.sh/v1';
 const CODEX_BIN = process.env.CODEX_BIN?.trim() || '/home/aibox/.npm-global/bin/codex';
 const useCodexBackend = (process.env.AI_PROVIDER || '').trim().toLowerCase() === 'codex';
-const execFileAsync = promisify(execFileCallback);
+type CodexExecOptions = {
+  cwd: string;
+  timeout: number;
+  maxBuffer: number;
+  encoding: 'utf8';
+  env: NodeJS.ProcessEnv;
+};
+
+function execCodex(args: string[], options: CodexExecOptions): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = execFileCallback(CODEX_BIN, args, options, (error, stdout, stderr) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve({ stdout: String(stdout || ''), stderr: String(stderr || '') });
+    });
+    // codex exec treats a non-terminal stdin as optional appended prompt input.
+    // Close the pipe immediately so headless service calls receive EOF instead
+    // of waiting indefinitely for input that will never arrive.
+    child.stdin?.end();
+  });
+}
 
 function codexText(value: any): string {
   if (typeof value === 'string') return value.trim();
@@ -81,8 +103,7 @@ async function runCodexGeneration(systemPrompt: string, userPrompt: string): Pro
   const outputFile = path.join(cwd, 'last-message.txt');
   try {
     const prompt = `${systemPrompt}\n\n${userPrompt}`;
-    const { stdout, stderr } = await execFileAsync(
-      CODEX_BIN,
+    const { stdout, stderr } = await execCodex(
       [
         'exec', '--json', '--output-last-message', outputFile,
         '--sandbox', 'read-only', '--skip-git-repo-check', prompt
