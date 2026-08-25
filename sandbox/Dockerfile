@@ -9,5 +9,11 @@ RUN apt-get update \
 
 USER node
 WORKDIR /home/node/app
+RUN npm init -y >/dev/null \
+    && npm install --no-audit --no-fund --save-exact \
+      react@18.2.0 react-dom@18.2.0 \
+      vite@4.5.14 @vitejs/plugin-react@4.3.4 \
+      tailwindcss@3.4.17 postcss@8.4.49 autoprefixer@10.4.20 \
+    && npm cache clean --force
 
 CMD ["node"]

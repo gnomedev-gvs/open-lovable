@@ -242,15 +242,15 @@ export class LocalDockerProvider extends SandboxProvider {
         preview: 'vite preview --host 0.0.0.0 --port 5173 --strictPort',
       },
       dependencies: {
-        react: '^18.2.0',
-        'react-dom': '^18.2.0',
+        react: '18.2.0',
+        'react-dom': '18.2.0',
       },
       devDependencies: {
-        '@vitejs/plugin-react': '^4.0.0',
-        vite: '^4.3.9',
-        tailwindcss: '^3.3.0',
-        postcss: '^8.4.31',
-        autoprefixer: '^10.4.16',
+        '@vitejs/plugin-react': '4.3.4',
+        vite: '4.5.14',
+        tailwindcss: '3.4.17',
+        postcss: '8.4.49',
+        autoprefixer: '10.4.20',
       },
     };
 
@@ -272,9 +272,16 @@ export class LocalDockerProvider extends SandboxProvider {
     await this.writeFile('src/App.jsx', appJsx);
     await this.writeFile('src/index.css', indexCss);
 
-    const install = await this.runCommand('npm install --no-audit --no-fund');
-    if (!install.success) {
-      throw new Error(`Sandbox npm install failed: ${install.stderr || install.stdout}`);
+    const baked = await this.runCommand(
+      "test -x node_modules/.bin/vite && test -d node_modules/react && test -d node_modules/react-dom && test -d node_modules/tailwindcss && test -d node_modules/postcss && test -d node_modules/autoprefixer && test -d node_modules/@vitejs/plugin-react"
+    );
+    if (!baked.success) {
+      const install = await this.runCommand(
+        'npm install --no-audit --no-fund --fetch-retries=3 --fetch-retry-factor=2 --fetch-retry-mintimeout=1000 --fetch-retry-maxtimeout=20000'
+      );
+      if (!install.success) {
+        throw new Error(`Sandbox dependency recovery failed: ${install.stderr || install.stdout}`);
+      }
     }
 
     await this.restartViteServer();
