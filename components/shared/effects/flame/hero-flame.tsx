@@ -32,7 +32,7 @@ function HeroFlame() {
 
   return (
     <div
-      className="cw-686 h-190 top-408 absolute flex gap-16 pointer-events-none select-none lg-max:hidden"
+      className="cw-686 h-190 top-408 absolute flex gap-16 pointer-events-none select-none opacity-45 sm:opacity-70 lg:opacity-100 scale-[0.72] sm:scale-90 lg:scale-100 origin-center"
       ref={wrapperRef}
     >
       <div className="flex-1 overflow-clip relative">

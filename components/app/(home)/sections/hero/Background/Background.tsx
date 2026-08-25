@@ -8,7 +8,7 @@ import CenterStar from "./_svg/CenterStar";
 
 export default function HomeHeroBackground() {
   return (
-    <div className="overlay contain-layout pointer-events-none lg-max:hidden">
+    <div className="overlay contain-layout pointer-events-none opacity-60 sm:opacity-80 lg:opacity-100">
       <div className="top-100 h-[calc(100%-99px)] border-border-faint border-y w-full left-0 absolute" />
 
       <div className="cw-[1314px] z-[105] absolute top-0 border-x border-border-faint h-full">

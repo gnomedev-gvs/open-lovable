@@ -9,7 +9,7 @@ function PixiContent() {
   return (
     <Pixi
       canvasAttrs={{
-        className: "cw-[1314px] h-506 absolute top-100 lg-max:hidden",
+        className: "cw-[1314px] h-506 absolute top-100 hidden md:block",
       }}
       fps={Infinity}
       initOptions={{ backgroundAlpha: 0 }}
@@ -35,11 +35,11 @@ export default function HomeHeroPixi() {
   
   if (hasError) {
     // Return empty div as fallback if Pixi fails to load
-    return <div className="cw-[1314px] h-506 absolute top-100 lg-max:hidden" />;
+    return <div className="cw-[1314px] h-506 absolute top-100 hidden md:block" />;
   }
   
   return (
-    <Suspense fallback={<div className="cw-[1314px] h-506 absolute top-100 lg-max:hidden" />}>
+    <Suspense fallback={<div className="cw-[1314px] h-506 absolute top-100 hidden md:block" />}>
       <PixiContent />
     </Suspense>
   );
