@@ -159,6 +159,46 @@ function AISandboxPage() {
 
   // Store flag to trigger generation after component mounts
   const [shouldAutoGenerate, setShouldAutoGenerate] = useState(false);
+  const [chatPersistenceHydrated, setChatPersistenceHydrated] = useState(false);
+
+  // Keep the visible chat attached to the sandbox so a browser refresh does not
+  // make an existing workspace look like a brand-new session.
+  useEffect(() => {
+    const sandboxId = searchParams.get('sandbox');
+    if (!sandboxId) {
+      setChatPersistenceHydrated(true);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(`open-lovable:chat:${sandboxId}`);
+      if (raw) {
+        const restored = JSON.parse(raw);
+        if (Array.isArray(restored) && restored.length > 0) {
+          setChatMessages(restored.map((message: ChatMessage) => ({
+            ...message,
+            timestamp: new Date(message.timestamp)
+          })));
+        }
+      }
+    } catch (error) {
+      console.warn('[persistence] Could not restore chat history:', error);
+    } finally {
+      setChatPersistenceHydrated(true);
+    }
+    // The sandbox URL is authoritative for this browser load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!chatPersistenceHydrated) return;
+    const sandboxId = searchParams.get('sandbox');
+    if (!sandboxId) return;
+    try {
+      localStorage.setItem(`open-lovable:chat:${sandboxId}`, JSON.stringify(chatMessages));
+    } catch (error) {
+      console.warn('[persistence] Could not save chat history:', error);
+    }
+  }, [chatMessages, chatPersistenceHydrated, searchParams]);
 
   // Clear old conversation data on component mount and create/restore sandbox
   useEffect(() => {
@@ -285,6 +325,18 @@ function AISandboxPage() {
             setSandboxData(statusData.sandboxData);
             updateStatus('Sandbox active', true);
             console.log('[home] Resumed existing sandbox without replacement:', sandboxIdParam);
+
+            // Rehydrate the file tree immediately from the preserved sandbox.
+            try {
+              const filesResponse = await fetch('/api/get-sandbox-files', { cache: 'no-store' });
+              const filesData = await filesResponse.json();
+              if (filesData?.success) {
+                setSandboxFiles(filesData.files || {});
+                setFileStructure(filesData.structure || '');
+              }
+            } catch (error) {
+              console.warn('[home] Could not restore sandbox file inventory:', error);
+            }
           } else {
             // The persistence guard snapshots any surviving labelled container before
             // create-ai-sandbox-v2 performs stale-container cleanup, then restores it.
