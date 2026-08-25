@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { execFile as execFileCallback } from 'child_process';
-import { mkdtemp, rm } from 'fs/promises';
+import { mkdtemp, readFile, rm } from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
@@ -78,11 +78,15 @@ function extractCodexAgentText(stdout: string): string {
 
 async function runCodexGeneration(systemPrompt: string, userPrompt: string): Promise<string> {
   const cwd = await mkdtemp(path.join(os.tmpdir(), 'open-lovable-codex-'));
+  const outputFile = path.join(cwd, 'last-message.txt');
   try {
     const prompt = `${systemPrompt}\n\n${userPrompt}`;
-    const { stdout } = await execFileAsync(
+    const { stdout, stderr } = await execFileAsync(
       CODEX_BIN,
-      ['exec', '--json', '--sandbox', 'read-only', '--skip-git-repo-check', prompt],
+      [
+        'exec', '--json', '--output-last-message', outputFile,
+        '--sandbox', 'read-only', '--skip-git-repo-check', prompt
+      ],
       {
         cwd,
         timeout: 300000,
@@ -94,7 +98,22 @@ async function runCodexGeneration(systemPrompt: string, userPrompt: string): Pro
         },
       }
     );
-    return extractCodexAgentText(String(stdout || ''));
+
+    try {
+      const finalMessage = (await readFile(outputFile, 'utf8')).trim();
+      if (finalMessage) return finalMessage;
+    } catch {
+      // Fall through to JSONL parsing for compatibility and diagnostics.
+    }
+
+    try {
+      return extractCodexAgentText(String(stdout || ''));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `${message}; stdoutBytes=${Buffer.byteLength(String(stdout || ''), 'utf8')}; stderrBytes=${Buffer.byteLength(String(stderr || ''), 'utf8')}`
+      );
+    }
   } finally {
     await rm(cwd, { recursive: true, force: true });
   }
