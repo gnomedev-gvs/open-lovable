@@ -17,14 +17,14 @@ The production capability has passed application deployment, health, browser/san
 ## Production runtime
 
 - Managed checkout: `/home/aibox/Dev/open-lovable`
-- Deployed runtime commit: `15ff6165dac437df833134d77a2767158429bc2f`
+- Deployed runtime commit: `a7ad6d9dce3e1f41986938077f4301f35e2cf99d`
 - Framework: Next.js 15.5.21
 - Service: `open-lovable.service`
 - LAN URL: `http://192.168.1.108:4320`
 - Local health: `http://127.0.0.1:4320/api/health`
 - Public Internet exposure: none in Gate 1
 
-The production deployment for `15ff6165dac437df833134d77a2767158429bc2f` completed through AI BOX Controller. The deployment rebuilt the application, reused the pinned local sandbox image layers, restarted only Open Lovable, and returned:
+The current production deployment for `a7ad6d9dce3e1f41986938077f4301f35e2cf99d` completed through AI BOX Controller. The deployment rebuilt the application, reused the pinned local sandbox image layers, restarted only Open Lovable, and returned:
 
 `aiProviderReady=true`
 
@@ -98,6 +98,24 @@ Verified result:
 - cleanup: final cleanup path
 
 The proof branch is a child of the unchanged target `main` commit `f288aac9259d197a093326fbf9beb3577028f27b`, proving the reusable action did not modify target `main`. The generated commit uses the repository author identity `TheOMKGroup`.
+
+## Browser refresh and workspace persistence
+
+The production generation workspace now survives normal browser refresh. A generation URL containing the active sandbox ID resumes that sandbox instead of replacing it or re-running the original generation. The visible chat is rehydrated for the same sandbox, the file inventory is restored, and workspace files are protected by durable snapshots outside the disposable Docker container.
+
+Durable snapshots are streamed directly from the managed Docker sandbox into a private host-side temporary file and atomically promoted to the session archive. This avoids relying on sandbox `/tmp` and supports overlapping periodic and browser-triggered snapshot requests.
+
+AI BOX Controller issue `#3654` verified the deployed implementation on commit `a7ad6d9dce3e1f41986938077f4301f35e2cf99d`:
+
+- acceptance: PASS
+- browser loads: 2
+- same sandbox after refresh: true
+- workspace marker preserved: true
+- durable snapshot: 18,902 bytes
+- browser: Google Chrome
+- sandbox cleanup: final cleanup path
+
+The controller regression action is `open-lovable-refresh-acceptance`. It is the required regression gate for future changes that can affect generation-page refresh, sandbox lifecycle or session snapshot behaviour.
 
 ## Durable operations
 
