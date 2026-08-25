@@ -1,7 +1,9 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { createWriteStream } from 'node:fs';
 import { copyFile, mkdir, rename, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -59,22 +61,41 @@ async function snapshotContainer(sandboxId: string): Promise<{ sandboxId: string
   await assertManagedSandbox(sandboxId);
   await mkdir(SESSION_ROOT, { recursive: true, mode: 0o700 });
 
-  // Browser-triggered and periodic snapshots can overlap. Each request must use
-  // its own in-container archive so one snapshot cannot delete another's file.
-  const containerArchive = `/tmp/open-lovable-session-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tgz`;
-  await docker([
-    'exec', sandboxId, 'sh', '-lc',
-    `cd ${WORKDIR} && tar --exclude='./node_modules' --exclude='./.git' --exclude='./dist' --exclude='./build' --exclude='./.next' -czf ${containerArchive} .`,
-  ]);
-
+  // Stream the archive directly from Docker to a private host-side temporary file.
+  // This avoids relying on /tmp inside the sandbox and is safe when snapshots overlap.
   const destination = archivePath(sandboxId);
-  const temporary = `${destination}.tmp-${process.pid}-${Date.now()}`;
+  const temporary = `${destination}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   try {
-    await docker(['cp', `${sandboxId}:${containerArchive}`, temporary]);
+    const child = spawn(DOCKER_BIN, [
+      'exec', '-u', '1000:1000', '-w', WORKDIR, sandboxId,
+      'tar',
+      '--exclude=./node_modules',
+      '--exclude=./.git',
+      '--exclude=./dist',
+      '--exclude=./build',
+      '--exclude=./.next',
+      '-czf', '-', '.',
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    let stderr = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', chunk => { stderr += chunk; });
+
+    const exit = new Promise<void>((resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', code => {
+        if (code === 0) resolve();
+        else reject(new Error(`Docker snapshot tar failed (${code ?? 'unknown'}): ${stderr.slice(-4000)}`));
+      });
+    });
+
+    await Promise.all([
+      pipeline(child.stdout, createWriteStream(temporary, { mode: 0o600 })),
+      exit,
+    ]);
     await rename(temporary, destination);
   } finally {
     await rm(temporary, { force: true }).catch(() => undefined);
-    await docker(['exec', sandboxId, 'rm', '-f', containerArchive], 30000).catch(() => undefined);
   }
 
   const info = await stat(destination);
